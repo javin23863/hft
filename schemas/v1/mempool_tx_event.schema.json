@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mempool_tx_event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "observed_at_ns",
+    "txid",
+    "first_seen_at_ns",
+    "fee_rate_sat_vb",
+    "vsize",
+    "rbf_signaling",
+    "output_values_sats",
+    "output_addresses",
+    "node_sync_height",
+    "node_ibd_complete",
+    "source_node_id"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "observed_at_ns": { "type": "integer" },
+    "txid": { "type": "string" },
+    "first_seen_at_ns": { "type": "integer" },
+    "fee_rate_sat_vb": { "type": "number" },
+    "vsize": { "type": "integer" },
+    "rbf_signaling": { "type": "boolean" },
+    "output_values_sats": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 0 }
+    },
+    "output_addresses": {
+      "type": "array",
+      "items": { "type": ["string", "null"] }
+    },
+    "mempool_entry": { "type": ["object", "null"] },
+    "node_sync_height": { "type": "integer", "minimum": 0 },
+    "node_ibd_complete": { "type": "boolean" },
+    "source_node_id": { "type": "string" }
+  }
+}

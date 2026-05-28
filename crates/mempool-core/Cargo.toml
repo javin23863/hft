@@ -1,0 +1,12 @@
+[package]
+name = "mempool-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+parquet.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

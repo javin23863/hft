@@ -1,0 +1,22 @@
+[package]
+name = "mempool-silver"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "mempool-silver-build"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+jsonschema.workspace = true
+mempool-core = { path = "../mempool-core" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+scenario-engines = { path = "../scenario-engines" }
+tempfile = "3"
+

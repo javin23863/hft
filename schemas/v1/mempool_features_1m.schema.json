@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mempool_features_1m",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ts_minute",
+    "tx_count",
+    "avg_fee_sat_vb",
+    "p90_fee_sat_vb",
+    "p99_fee_sat_vb",
+    "stuck_flow_pct",
+    "fee_spike_zscore",
+    "exchange_inflow_event",
+    "cpfp_detected",
+    "congestion_regime"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "ts_minute": { "type": "string" },
+    "tx_count": { "type": "integer" },
+    "avg_fee_sat_vb": { "type": "number" },
+    "p90_fee_sat_vb": { "type": "number" },
+    "p99_fee_sat_vb": { "type": "number" },
+    "stuck_flow_pct": { "type": "number" },
+    "fee_spike_zscore": { "type": "number" },
+    "exchange_inflow_event": { "type": "boolean" },
+    "cpfp_detected": { "type": "boolean" },
+    "congestion_regime": { "type": "string" }
+  }
+}

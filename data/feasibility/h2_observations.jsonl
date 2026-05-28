@@ -1,0 +1,5 @@
+{"predicted_positive":true,"actual_positive":true,"cpfp_detected":true,"cpfp_truth":true}
+{"predicted_positive":false,"actual_positive":false,"cpfp_detected":false,"cpfp_truth":false}
+{"predicted_positive":true,"actual_positive":false,"cpfp_detected":true,"cpfp_truth":true}
+{"predicted_positive":false,"actual_positive":false,"cpfp_detected":false,"cpfp_truth":false}
+{"predicted_positive":true,"actual_positive":true,"cpfp_detected":true,"cpfp_truth":true}

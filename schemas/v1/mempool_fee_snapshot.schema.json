@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "mempool_fee_snapshot",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "observed_at",
+    "size_txs",
+    "bytes",
+    "min_fee_sat_vb",
+    "p50_fee_sat_vb",
+    "p90_fee_sat_vb",
+    "p99_fee_sat_vb",
+    "stuck_flow_pct",
+    "source_node_id"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "observed_at": { "type": "string" },
+    "size_txs": { "type": "integer", "minimum": 0 },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "min_fee_sat_vb": { "type": "number" },
+    "p50_fee_sat_vb": { "type": "number" },
+    "p90_fee_sat_vb": { "type": "number" },
+    "p99_fee_sat_vb": { "type": "number" },
+    "stuck_flow_pct": { "type": "number" },
+    "source_node_id": { "type": "string" }
+  }
+}

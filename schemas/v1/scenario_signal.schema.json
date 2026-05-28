@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "scenario_signal",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "observed_at",
+    "hypothesis_id",
+    "signal_name",
+    "confidence",
+    "posterior",
+    "payload"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "observed_at": { "type": "string" },
+    "hypothesis_id": { "type": "string" },
+    "signal_name": { "type": "string" },
+    "confidence": { "type": "number" },
+    "posterior": {
+      "type": "object",
+      "required": ["mean", "std", "n_obs", "method"],
+      "properties": {
+        "mean": { "type": "number" },
+        "std": { "type": "number" },
+        "n_obs": { "type": "integer" },
+        "method": { "type": "string" }
+      }
+    },
+    "payload": { "type": "object" }
+  }
+}

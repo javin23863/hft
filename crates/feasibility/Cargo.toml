@@ -1,0 +1,18 @@
+[package]
+name = "feasibility"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "feasibility-report"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+mempool-core = { path = "../mempool-core" }
+rand.workspace = true
+rand_chacha.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+

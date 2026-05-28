@@ -1,0 +1,21 @@
+{
+  "version": "v1",
+  "sources": [
+    "public labels",
+    "manual audit set"
+  ],
+  "exchanges": [
+    {
+      "name": "binance",
+      "addresses": []
+    },
+    {
+      "name": "coinbase",
+      "addresses": []
+    },
+    {
+      "name": "bybit",
+      "addresses": []
+    }
+  ]
+}
