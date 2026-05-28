@@ -1,7 +1,7 @@
 use mempool_core::types::MempoolEntryMeta;
 use mempool_core::{FeeSnapshot, MempoolTxEvent, SCHEMA_VERSION};
 use mempool_silver::build_feature_bars;
-use scenario_engines::{h1_exchange_inflow_signal, h2_cpfp_signal, h3_congestion_signal};
+use scenario_engines::{emit_signals_for_bars, h1_exchange_inflow_signal, h2_cpfp_signal, h3_congestion_signal};
 use std::collections::HashSet;
 use mempool_core::ExchangeRegistry;
 
@@ -43,7 +43,7 @@ fn silver_to_scenario_flow() {
     let reg = ExchangeRegistry::from_addresses(HashSet::from(["bc1qdep".to_string()]));
     let mut bars = build_feature_bars(&snaps, &events, &reg, 10.0);
     bars[0].congestion_regime = "congested".into();
-    assert!(h1_exchange_inflow_signal(&bars[0]).is_some());
-    assert!(h2_cpfp_signal(&bars[0]).is_some());
+    assert!(h1_exchange_inflow_signal(&bars[0], &bars).is_some());
+    assert!(h2_cpfp_signal(&bars[0], &bars).is_some());
     assert!(h3_congestion_signal(&bars[0]).is_some());
 }

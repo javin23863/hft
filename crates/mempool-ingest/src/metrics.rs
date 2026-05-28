@@ -12,6 +12,8 @@ pub struct IngestMetrics {
     pub upload_success: AtomicU64,
     pub upload_failures: AtomicU64,
     pub upload_queue_depth: AtomicU64,
+    pub upload_dropped: AtomicU64,
+    pub tx_events_truncated: AtomicU64,
 }
 
 impl IngestMetrics {
@@ -27,6 +29,8 @@ impl IngestMetrics {
             upload_success = self.upload_success.load(Ordering::Relaxed),
             upload_failures = self.upload_failures.load(Ordering::Relaxed),
             upload_queue_depth = self.upload_queue_depth.load(Ordering::Relaxed),
+            upload_dropped = self.upload_dropped.load(Ordering::Relaxed),
+            tx_events_truncated = self.tx_events_truncated.load(Ordering::Relaxed),
             "ingest metrics"
         );
     }

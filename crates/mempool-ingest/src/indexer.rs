@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use mempool_core::types::{FeeSnapshot, MempoolTxEvent};
 use mempool_core::schema::SCHEMA_VERSION;
 
@@ -6,7 +8,8 @@ use crate::rpc::{BtcRpcClient, VerboseMempoolEntry};
 #[derive(Debug, Default)]
 pub struct MempoolIndexer {
     fee_rates: Vec<f64>,
-    seen_txids: std::collections::HashMap<String, i64>,
+    seen_txids: HashMap<String, i64>,
+    active_mempool: HashSet<String>,
     clearance_fee_sat_vb: f64,
 }
 
@@ -21,7 +24,7 @@ impl MempoolIndexer {
     pub fn enrich_addresses(
         &self,
         events: &mut [MempoolTxEvent],
-        addresses_by_txid: &std::collections::HashMap<String, Vec<Option<String>>>,
+        addresses_by_txid: &HashMap<String, Vec<Option<String>>>,
     ) {
         for ev in events.iter_mut() {
             if let Some(addrs) = addresses_by_txid.get(&ev.txid) {
@@ -30,29 +33,40 @@ impl MempoolIndexer {
         }
     }
 
-    pub fn ingest_verbose_map(
+    /// Refresh aggregate fee-rate distribution from the full mempool map (one RPC view).
+    pub fn refresh_fee_rates(&mut self, map: &HashMap<String, VerboseMempoolEntry>) {
+        self.fee_rates.clear();
+        self.active_mempool.clear();
+        for (txid, entry) in map {
+            self.active_mempool.insert(txid.clone());
+            self.fee_rates.push(BtcRpcClient::fee_rate_sat_vb(entry));
+        }
+    }
+
+    /// Emit bronze events only for txids newly seen in the mempool (delta).
+    pub fn drain_new_events(
         &mut self,
-        map: &std::collections::HashMap<String, VerboseMempoolEntry>,
+        map: &HashMap<String, VerboseMempoolEntry>,
         observed_at_ns: i64,
         node_height: u64,
         ibd_complete: bool,
         node_id: &str,
     ) -> Vec<MempoolTxEvent> {
-        self.fee_rates.clear();
-        let mut events = Vec::with_capacity(map.len().min(10_000));
-
+        let mut events = Vec::new();
         for (txid, entry) in map {
+            if !self.active_mempool.contains(txid) {
+                continue;
+            }
+            if self.seen_txids.contains_key(txid) {
+                continue;
+            }
             let fee_rate = BtcRpcClient::fee_rate_sat_vb(entry);
-            self.fee_rates.push(fee_rate);
-            let first_seen = self
-                .seen_txids
-                .entry(txid.clone())
-                .or_insert(observed_at_ns);
+            self.seen_txids.insert(txid.clone(), observed_at_ns);
             events.push(MempoolTxEvent {
                 schema_version: SCHEMA_VERSION.to_string(),
                 observed_at_ns,
                 txid: txid.clone(),
-                first_seen_at_ns: *first_seen,
+                first_seen_at_ns: observed_at_ns,
                 fee_rate_sat_vb: fee_rate,
                 vsize: entry.vsize,
                 rbf_signaling: BtcRpcClient::rbf_signaling(entry),
@@ -64,7 +78,13 @@ impl MempoolIndexer {
                 source_node_id: node_id.to_string(),
             });
         }
+        self.prune_seen_txids();
         events
+    }
+
+    fn prune_seen_txids(&mut self) {
+        self.seen_txids
+            .retain(|txid, _| self.active_mempool.contains(txid));
     }
 
     pub fn fee_snapshot(
@@ -112,6 +132,21 @@ impl MempoolIndexer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rpc::VerboseMempoolEntry;
+
+    fn entry(fee_btc: f64, vsize: u32) -> VerboseMempoolEntry {
+        VerboseMempoolEntry {
+            fee: fee_btc,
+            vsize,
+            time: 0,
+            fees: None,
+            descendantcount: 1,
+            ancestorcount: 1,
+            ancestorsize: vsize,
+            descendantssize: vsize,
+            bip125_replaceable: Some(false),
+        }
+    }
 
     #[test]
     fn fee_snapshot_percentiles() {
@@ -120,5 +155,17 @@ mod tests {
         let snap = idx.fee_snapshot("2026-05-20T00:00:00Z", 5, 1000, 1.0, "n1");
         assert!(snap.p50_fee_sat_vb > 0.0);
         assert!(snap.p99_fee_sat_vb >= snap.p50_fee_sat_vb);
+    }
+
+    #[test]
+    fn drain_new_events_only_emits_once_per_txid() {
+        let mut idx = MempoolIndexer::new(10.0);
+        let mut map = HashMap::new();
+        map.insert("txa".into(), entry(5000.0, 200));
+        idx.refresh_fee_rates(&map);
+        let first = idx.drain_new_events(&map, 100, 1, true, "n1");
+        assert_eq!(first.len(), 1);
+        let second = idx.drain_new_events(&map, 200, 1, true, "n1");
+        assert!(second.is_empty());
     }
 }

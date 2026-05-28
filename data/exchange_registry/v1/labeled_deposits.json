@@ -1,0 +1,8 @@
+{
+  "exchanges": [
+    {
+      "name": "integration_fixture",
+      "addresses": ["bc1qdep"]
+    }
+  ]
+}

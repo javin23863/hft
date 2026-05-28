@@ -4,7 +4,7 @@ use std::io::Write;
 use anyhow::Result;
 use feasibility::{
     build_report, export_h1_observations, export_h2_observations, export_h3_observations,
-    write_report_markdown,
+    write_report_markdown, GroundTruthLabels,
 };
 use mempool_silver::{
     build_feature_bars, load_registry, read_snapshots_from_run_dir, read_tx_events_from_run_dir,
@@ -30,6 +30,7 @@ fn main() -> Result<()> {
         .unwrap_or(10.0);
 
     let registry = load_registry()?;
+    let labels = GroundTruthLabels::load_default()?;
     let snaps = read_snapshots_from_run_dir(&bronze_run)?;
     let events = if let Ok(path) = std::env::var("HFT_TX_EVENTS_JSONL") {
         read_tx_events_jsonl(path)?
@@ -41,8 +42,8 @@ fn main() -> Result<()> {
     };
     let bars = build_feature_bars(&snaps, &events, &registry, clearance);
 
-    let h1 = export_h1_observations(&events, &registry);
-    let h2 = export_h2_observations(&events, clearance);
+    let h1 = export_h1_observations(&events, &registry, &labels, clearance);
+    let h2 = export_h2_observations(&events, clearance, &labels);
     let h3 = export_h3_observations(&bars);
 
     std::fs::create_dir_all("data/feasibility")?;

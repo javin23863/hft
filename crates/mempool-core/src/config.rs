@@ -18,7 +18,10 @@ pub struct IngestConfig {
     pub max_tip_lag_blocks: u64,
     pub b2_bucket: Option<String>,
     pub b2_endpoint: Option<String>,
+    pub b2_region: Option<String>,
     pub enable_b2_upload: bool,
+    pub max_new_tx_events_per_poll: usize,
+    pub max_zmq_enrich_per_poll: usize,
 }
 
 impl IngestConfig {
@@ -57,14 +60,28 @@ impl IngestConfig {
             b2_endpoint: env::var("B2_ENDPOINT_URL")
                 .or_else(|_| env::var("AWS_ENDPOINT_URL"))
                 .ok(),
+            b2_region: env::var("B2_REGION")
+                .or_else(|_| env::var("AWS_REGION"))
+                .ok(),
             enable_b2_upload: env::var("HFT_ENABLE_B2_UPLOAD")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false),
+            max_new_tx_events_per_poll: env::var("HFT_MAX_NEW_TX_EVENTS_PER_POLL")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(2_000),
+            max_zmq_enrich_per_poll: env::var("HFT_MAX_ZMQ_ENRICH_PER_POLL")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(100),
         })
     }
 
     pub fn validate(&self) -> Result<()> {
-        anyhow::ensure!(!self.btc_rpc_url.is_empty(), "BITCOIN_RPC_URL required");
+        anyhow::ensure!(
+            !self.btc_rpc_url.is_empty(),
+            "BITCOIN_RPC_URL required"
+        );
         if self.enable_b2_upload {
             self.b2_bucket
                 .as_ref()

@@ -39,6 +39,7 @@ impl IngestRunner {
             cfg.enable_b2_upload,
             cfg.b2_endpoint.clone(),
             cfg.b2_bucket.clone(),
+            cfg.b2_region.clone(),
             Arc::clone(&metrics),
         )?;
         let zmq = ZmqSubscriber::new(cfg.zmq_rawtx.clone(), cfg.zmq_hashblock.clone());
@@ -107,7 +108,8 @@ impl IngestRunner {
             .store(info.size, Ordering::Relaxed);
 
         let observed_at_ns = now.timestamp_nanos_opt().unwrap_or_else(|| now.timestamp() * 1_000_000_000);
-        let mut events = self.indexer.ingest_verbose_map(
+        self.indexer.refresh_fee_rates(&verbose);
+        let mut events = self.indexer.drain_new_events(
             &verbose,
             observed_at_ns,
             chain.blocks,
@@ -116,7 +118,7 @@ impl IngestRunner {
         );
 
         let mut enrich_ids: Vec<String> = zmq_txids.drain().collect();
-        enrich_ids.truncate(25);
+        enrich_ids.truncate(self.cfg.max_zmq_enrich_per_poll);
         let mut addresses_by_txid = HashMap::new();
         for txid in enrich_ids {
             if let Ok(addrs) = self.rpc.getrawtransaction_verbose(&txid).await {
@@ -125,6 +127,13 @@ impl IngestRunner {
         }
         self.indexer
             .enrich_addresses(&mut events, &addresses_by_txid);
+
+        if events.len() > self.cfg.max_new_tx_events_per_poll {
+            events.truncate(self.cfg.max_new_tx_events_per_poll);
+            self.metrics
+                .tx_events_truncated
+                .fetch_add(1, Ordering::Relaxed);
+        }
 
         if let Some(chunk_path) = self.writer.write_events(&events, &run_date, &hour)? {
             self.metrics.bronze_chunks.fetch_add(1, Ordering::Relaxed);

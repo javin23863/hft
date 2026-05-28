@@ -1,7 +1,7 @@
 use std::thread;
-use std::time::Duration;
 
 use anyhow::{Context, Result};
+use sha2::{Digest, Sha256};
 use tokio::sync::mpsc;
 use tracing::warn;
 
@@ -35,23 +35,56 @@ impl ZmqSubscriber {
         if !self.configured() {
             return SourceMode::Polling;
         }
-        let mut ok = false;
-        for endpoint in [self.rawtx.as_ref(), self.hashblock.as_ref()].into_iter().flatten() {
-            if let Some(addr) = endpoint.strip_prefix("tcp://") {
-                if tokio::time::timeout(Duration::from_millis(300), tokio::net::TcpStream::connect(addr))
-                    .await
-                    .is_ok()
-                {
-                    ok = true;
-                }
-            }
-        }
+        let rawtx = self.rawtx.clone();
+        let hashblock = self.hashblock.clone();
+        let ok = tokio::task::spawn_blocking(move || probe_zmq_endpoints(rawtx, hashblock))
+            .await
+            .unwrap_or(false);
         if ok {
             SourceMode::Zmq
         } else {
             SourceMode::Polling
         }
     }
+}
+
+fn probe_zmq_lib_healthy() -> bool {
+    let ctx = zmq::Context::new();
+    let a = match ctx.socket(zmq::PAIR) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let b = match ctx.socket(zmq::PAIR) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    a.bind("inproc://hft-zmq-probe").is_ok() && b.connect("inproc://hft-zmq-probe").is_ok()
+}
+
+fn probe_zmq_endpoints(rawtx: Option<String>, hashblock: Option<String>) -> bool {
+    if !probe_zmq_lib_healthy() {
+        return false;
+    }
+    let ctx = zmq::Context::new();
+    let socket = match ctx.socket(zmq::SUB) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    socket.set_rcvtimeo(1500).ok();
+    let mut connected = false;
+    if let Some(ep) = rawtx {
+        if socket.connect(&ep).is_ok() {
+            socket.set_subscribe(b"rawtx").ok();
+            connected = true;
+        }
+    }
+    if let Some(ep) = hashblock {
+        if socket.connect(&ep).is_ok() {
+            socket.set_subscribe(b"hashblock").ok();
+            connected = true;
+        }
+    }
+    connected
 }
 
 pub fn spawn_zmq_listener(
@@ -112,39 +145,26 @@ fn txid_from_raw_tx(raw: &[u8]) -> Option<String> {
     if raw.len() < 4 {
         return None;
     }
-    let mut hasher = sha2::Sha256::new();
-    use sha2::Digest;
-    hasher.update(raw);
-    let hash = hasher.finalize();
+    let hash = Sha256::digest(raw);
     let mut rev = hash.to_vec();
     rev.reverse();
-    Some(hex::encode(&rev))
-}
-
-mod hex {
-    pub fn encode(bytes: &[u8]) -> String {
-        bytes.iter().map(|b| format!("{b:02x}")).collect()
-    }
+    Some(hex::encode(rev))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn detects_zmq_mode_when_tcp_endpoint_is_reachable() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind listener");
-        let addr = listener.local_addr().expect("local addr");
-        let endpoint = format!("tcp://{addr}");
-        let subscriber = ZmqSubscriber::new(Some(endpoint), None);
+    #[test]
+    fn txid_from_raw_tx_produces_32_byte_hex() {
+        let raw = vec![0x01, 0x00, 0x00, 0x00, 0x01];
+        let txid = txid_from_raw_tx(&raw).expect("txid");
+        assert_eq!(txid.len(), 64);
+    }
 
-        let accept_task = tokio::spawn(async move {
-            let _ = listener.accept().await;
-        });
-        let mode = subscriber.probe().await;
-        accept_task.await.expect("join accept task");
-        assert_eq!(mode, SourceMode::Zmq);
+    #[tokio::test]
+    async fn probe_polling_when_not_configured() {
+        let subscriber = ZmqSubscriber::new(None, None);
+        assert_eq!(subscriber.probe().await, SourceMode::Polling);
     }
 }

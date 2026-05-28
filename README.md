@@ -1,11 +1,15 @@
 # HFT Mempool Microstructure
 
-Standalone Rust repository for Bitcoin mempool ingestion, feature extraction, feasibility testing, and scenario signal generation.
+Standalone Rust repository for **Bitcoin mempool observability**: bronze ingest, silver features, feasibility gates (H1/H2/H3), and scenario signals.
+
+This is **not** a live MEV or latency-arbitrage execution stack. There is no bundle detection, propagation race model, or trading PnL path here.
 
 ## Scope
 
 - All code and artifacts live in this repository.
 - No runtime wiring or code changes in external repositories.
+- Bronze ingest writes **delta** tx events (new mempool txids only) plus periodic fee snapshots.
+- Exchange inflow labels: `data/exchange_registry/v1/exchanges.json` + `labeled_deposits.json`, optional `data/feasibility/ground_truth/h1_labels.jsonl`.
 - Phased flow:
   1. `mempool-ingest` writes bronze datasets.
   2. `mempool-silver` builds 1m features and scenario signal bars.
@@ -27,9 +31,17 @@ Standalone Rust repository for Bitcoin mempool ingestion, feature extraction, fe
 
 ```bash
 cargo test
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-3. Run ingest:
+3. Export feasibility from spool (after ingest) and render report:
+
+```bash
+cargo run -p feasibility --bin feasibility-export
+cargo run -p feasibility --bin feasibility-report
+```
+
+4. Run ingest:
 
 ```bash
 cargo run -p mempool-ingest --bin mempool-ingest

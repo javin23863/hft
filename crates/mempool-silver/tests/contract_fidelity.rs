@@ -6,10 +6,10 @@ use mempool_core::typed_parquet::{
     read_fee_snapshots_typed, write_feature_bars_typed, write_fee_snapshots_typed,
     write_scenario_signals_typed,
 };
-use mempool_core::{FeeSnapshot, ScenarioSignal, SCHEMA_VERSION};
+use mempool_core::{FeeSnapshot, SCHEMA_VERSION};
 use mempool_silver::{build_feature_bars, load_registry};
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-use scenario_engines::{emit_signals_for_feature, write_signals_parquet};
+use scenario_engines::{emit_signals_for_bars, write_signals_parquet};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
@@ -122,10 +122,7 @@ fn typed_parquet_roundtrip_validates_schema_and_hashes() {
         &["fee_spike_zscore", "exchange_inflow_event", "cpfp_detected"],
     );
 
-    let signals: Vec<ScenarioSignal> = bars
-        .iter()
-        .flat_map(emit_signals_for_feature)
-        .collect();
+    let signals = emit_signals_for_bars(&bars);
     write_signals_parquet(&signal_path, &signals).expect("write signals parquet");
     write_scenario_signals_typed(&signal_path, &signals).expect("write typed signals");
 

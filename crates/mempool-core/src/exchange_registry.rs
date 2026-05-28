@@ -28,16 +28,12 @@ impl ExchangeRegistry {
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let content = fs::read_to_string(path.as_ref()).context("read exchange registry")?;
-        let parsed: RegistryFile =
-            serde_json::from_str(&content).context("parse exchange registry")?;
+        let path = path.as_ref();
         let mut addresses = HashSet::new();
-        for ex in parsed.exchanges {
-            for addr in ex.addresses {
-                if !addr.is_empty() {
-                    addresses.insert(addr);
-                }
-            }
+        merge_registry_file(path, &mut addresses)?;
+        if let Some(parent) = path.parent() {
+            let deposits = parent.join("labeled_deposits.json");
+            merge_registry_file(&deposits, &mut addresses).ok();
         }
         Ok(Self { addresses })
     }
@@ -46,12 +42,36 @@ impl ExchangeRegistry {
         self.addresses.contains(address)
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.addresses.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.addresses.len()
+    }
+
     pub fn tx_has_exchange_output<'a, I>(&self, outputs: I) -> bool
     where
         I: IntoIterator<Item = &'a Option<String>>,
     {
         outputs.into_iter().flatten().any(|a| self.contains_address(a))
     }
+}
+
+fn merge_registry_file(path: &Path, out: &mut HashSet<String>) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let content = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    let parsed: RegistryFile = serde_json::from_str(&content).context("parse exchange registry")?;
+    for ex in parsed.exchanges {
+        for addr in ex.addresses {
+            if !addr.is_empty() {
+                out.insert(addr);
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -70,5 +90,24 @@ mod tests {
         let reg = ExchangeRegistry::load(&path).unwrap();
         assert!(reg.contains_address("bc1qtest"));
         assert!(!reg.contains_address("bc1qother"));
+    }
+
+    #[test]
+    fn merges_labeled_deposits_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exchanges.json");
+        fs::write(
+            &path,
+            r#"{"exchanges":[{"name":"base","addresses":["bc1qbase"]}]}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("labeled_deposits.json"),
+            r#"{"exchanges":[{"name":"overlay","addresses":["bc1qoverlay"]}]}"#,
+        )
+        .unwrap();
+        let reg = ExchangeRegistry::load(&path).unwrap();
+        assert_eq!(reg.len(), 2);
+        assert!(reg.contains_address("bc1qoverlay"));
     }
 }

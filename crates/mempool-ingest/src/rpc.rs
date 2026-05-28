@@ -225,7 +225,10 @@ mod tests {
             max_tip_lag_blocks: 2,
             b2_bucket: None,
             b2_endpoint: None,
+            b2_region: None,
             enable_b2_upload: false,
+            max_new_tx_events_per_poll: 2_000,
+            max_zmq_enrich_per_poll: 100,
         };
         let client = BtcRpcClient::new(&cfg).unwrap();
         let info = client.getmempoolinfo().await.unwrap();

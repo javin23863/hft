@@ -31,7 +31,7 @@ pub struct H2Observation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct H3Observation {
     pub mempool_congestion_score: f64,
-    pub perp_stress_score: f64,
+    pub fee_stress_proxy_score: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -218,11 +218,7 @@ pub fn estimate_h3_corr(observations: &[H3Observation]) -> MetricEstimate {
             dy += vy * vy;
         }
         let denom = (dx * dy).sqrt();
-        if denom > 0.0 {
-            num / denom
-        } else {
-            0.0
-        }
+        if denom > 0.0 { num / denom } else { 0.0 }
     }
 
     let xs = observations
@@ -231,7 +227,7 @@ pub fn estimate_h3_corr(observations: &[H3Observation]) -> MetricEstimate {
         .collect::<Vec<_>>();
     let ys = observations
         .iter()
-        .map(|o| o.perp_stress_score)
+        .map(|o| o.fee_stress_proxy_score)
         .collect::<Vec<_>>();
     let value = corr(&xs, &ys);
     let (ci_low, ci_high) = bootstrap_ci(observations.len(), 19, |rng| {
@@ -242,7 +238,7 @@ pub fn estimate_h3_corr(observations: &[H3Observation]) -> MetricEstimate {
             .collect::<Vec<_>>();
         let sy = sampled
             .iter()
-            .map(|o| o.perp_stress_score)
+            .map(|o| o.fee_stress_proxy_score)
             .collect::<Vec<_>>();
         corr(&sx, &sy)
     });
@@ -290,7 +286,7 @@ pub fn build_report(
         h2_fpr,
         h2_cpfp_accuracy,
         h3_corr,
-        notes: "Measured estimators with deterministic bootstrap CI".to_string(),
+        notes: "Measured estimators with deterministic bootstrap CI. H1 rows require enriched outputs or explicit ground-truth labels. H2 actual uses stricter cpfp_consensus_truth than the operational detector. H3 fee_stress_proxy is a mempool z-score proxy (not external perp market data).".to_string(),
     }
 }
 
@@ -311,7 +307,7 @@ pub fn write_report_markdown(path: impl AsRef<Path>, report: &FeasibilityReport)
 - H1 precision TP/(TP+FP): {:.4} [{:.4}, {:.4}] (n={})\n\
 - H2 false-positive rate FP/(FP+TN): {:.4} [{:.4}, {:.4}] (n={})\n\
 - H2 CPFP detection accuracy: {:.4} [{:.4}, {:.4}] (n={})\n\
-- H3 correlation(congestion, perp_stress): {:.4} [{:.4}, {:.4}] (n={})\n\n\
+- H3 correlation(congestion, fee_stress_proxy): {:.4} [{:.4}, {:.4}] (n={})\n\n\
 Notes: {}\n",
         as_str(report.h1),
         as_str(report.h2),
@@ -390,15 +386,15 @@ mod tests {
         let h3 = vec![
             H3Observation {
                 mempool_congestion_score: 0.1,
-                perp_stress_score: 0.1,
+                fee_stress_proxy_score: 0.1,
             },
             H3Observation {
                 mempool_congestion_score: 0.5,
-                perp_stress_score: 0.45,
+                fee_stress_proxy_score: 0.45,
             },
             H3Observation {
                 mempool_congestion_score: 0.9,
-                perp_stress_score: 0.8,
+                fee_stress_proxy_score: 0.8,
             },
         ];
 
