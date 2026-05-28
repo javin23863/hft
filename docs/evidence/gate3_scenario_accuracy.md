@@ -1,9 +1,12 @@
 # Gate 3 Scenario Precision and Accuracy
 
 - Scope: H1 precision, H2 FPR and CPFP detection accuracy, H3 correlation.
-- Source: `data/feasibility/*.jsonl`
-- Validation command: `cargo run -p feasibility --bin feasibility-report`
+- Source: `data/feasibility/*.jsonl` (prefer `feasibility-export` from bronze/silver replay).
+- Validation commands:
+  - `cargo run -p feasibility --bin feasibility-export` (pipeline-derived observations)
+  - `cargo run -p feasibility --bin feasibility-report`
 
 ## Result
 
-- Status: PASS when `docs/FEASIBILITY_REPORT.md` shows explicit `n_obs`, CI bounds, and KEEP/KILL outcomes.
+- Status: **PARTIAL** — report generation and estimators PASS on available `n`; live-labeled ground truth at scale **PENDING**.
+- Notes: populate `data/exchange_registry/v1/exchanges.json` addresses for H1 inflow labels.

@@ -1,6 +1,9 @@
-use mempool_core::{FeeSnapshot, SCHEMA_VERSION};
+use mempool_core::types::MempoolEntryMeta;
+use mempool_core::{FeeSnapshot, MempoolTxEvent, SCHEMA_VERSION};
 use mempool_silver::build_feature_bars;
 use scenario_engines::{h1_exchange_inflow_signal, h2_cpfp_signal, h3_congestion_signal};
+use std::collections::HashSet;
+use mempool_core::ExchangeRegistry;
 
 #[test]
 fn silver_to_scenario_flow() {
@@ -17,9 +20,28 @@ fn silver_to_scenario_flow() {
         source_node_id: "n1".into(),
     }];
 
-    let mut bars = build_feature_bars(&snaps);
-    bars[0].exchange_inflow_event = true;
-    bars[0].cpfp_detected = true;
+    let events = vec![MempoolTxEvent {
+        schema_version: SCHEMA_VERSION.to_string(),
+        observed_at_ns: 1_700_000_000_000_000_000,
+        txid: "tx1".into(),
+        first_seen_at_ns: 1_700_000_000_000_000_000,
+        fee_rate_sat_vb: 30.0,
+        vsize: 200,
+        rbf_signaling: false,
+        output_values_sats: vec![],
+        output_addresses: vec![Some("bc1qdep".into())],
+        mempool_entry: Some(MempoolEntryMeta {
+            ancestor_count: 1,
+            descendant_count: 1,
+            ancestor_feerate_sat_vb: Some(2.0),
+            descendant_feerate_sat_vb: Some(30.0),
+        }),
+        node_sync_height: 0,
+        node_ibd_complete: true,
+        source_node_id: "n1".into(),
+    }];
+    let reg = ExchangeRegistry::from_addresses(HashSet::from(["bc1qdep".to_string()]));
+    let mut bars = build_feature_bars(&snaps, &events, &reg, 10.0);
     bars[0].congestion_regime = "congested".into();
     assert!(h1_exchange_inflow_signal(&bars[0]).is_some());
     assert!(h2_cpfp_signal(&bars[0]).is_some());

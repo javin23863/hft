@@ -1,5 +1,7 @@
 use mempool_core::{FeeSnapshot, MempoolFeatureBar, SCHEMA_VERSION};
+use mempool_core::ExchangeRegistry;
 use mempool_silver::{build_feature_bars, run_regime_backtest};
+use std::collections::HashSet;
 
 #[test]
 fn zscore_is_zero_when_variance_is_zero() {
@@ -29,7 +31,8 @@ fn zscore_is_zero_when_variance_is_zero() {
             source_node_id: "n1".into(),
         },
     ];
-    let bars = build_feature_bars(&snaps);
+    let reg = ExchangeRegistry::from_addresses(HashSet::new());
+    let bars = build_feature_bars(&snaps, &[], &reg, 10.0);
     assert_eq!(bars[0].fee_spike_zscore, 0.0);
     assert_eq!(bars[1].fee_spike_zscore, 0.0);
 }
@@ -48,7 +51,8 @@ fn congestion_regime_boundaries_are_stable() {
         stuck_flow_pct: stuck,
         source_node_id: "n1".into(),
     };
-    let bars = build_feature_bars(&[mk(20.0), mk(21.0), mk(70.0), mk(69.0)]);
+    let reg = ExchangeRegistry::from_addresses(HashSet::new());
+    let bars = build_feature_bars(&[mk(20.0), mk(21.0), mk(70.0), mk(69.0)], &[], &reg, 10.0);
     assert_eq!(bars[0].congestion_regime, "clearing");
     assert_eq!(bars[1].congestion_regime, "normal");
     assert_eq!(bars[2].congestion_regime, "congested");

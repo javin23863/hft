@@ -1,5 +1,5 @@
-use mempool_core::schema::SCHEMA_VERSION;
 use mempool_core::types::{FeeSnapshot, MempoolTxEvent};
+use mempool_core::schema::SCHEMA_VERSION;
 
 use crate::rpc::{BtcRpcClient, VerboseMempoolEntry};
 
@@ -15,6 +15,18 @@ impl MempoolIndexer {
         Self {
             clearance_fee_sat_vb,
             ..Default::default()
+        }
+    }
+
+    pub fn enrich_addresses(
+        &self,
+        events: &mut [MempoolTxEvent],
+        addresses_by_txid: &std::collections::HashMap<String, Vec<Option<String>>>,
+    ) {
+        for ev in events.iter_mut() {
+            if let Some(addrs) = addresses_by_txid.get(&ev.txid) {
+                ev.output_addresses = addrs.clone();
+            }
         }
     }
 

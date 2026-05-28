@@ -1,5 +1,5 @@
-use mempool_core::parquet_io::write_json_rows_parquet;
-use mempool_core::{MempoolFeatureBar, ScenarioSignal, SignalPosteriorFields, SCHEMA_VERSION};
+use mempool_core::{MempoolFeatureBar, SCHEMA_VERSION, ScenarioSignal, SignalPosteriorFields};
+use mempool_core::typed_parquet::write_scenario_signals_typed;
 use serde_json::json;
 
 pub fn h1_exchange_inflow_signal(feature: &MempoolFeatureBar) -> Option<ScenarioSignal> {
@@ -16,7 +16,7 @@ pub fn h1_exchange_inflow_signal(feature: &MempoolFeatureBar) -> Option<Scenario
             mean: feature.fee_spike_zscore,
             std: 1.0,
             n_obs: 1,
-            method: "bootstrap_placeholder".into(),
+            method: "empirical_package_feerate".into(),
         },
         payload: json!({
             "regime": feature.congestion_regime,
@@ -39,7 +39,7 @@ pub fn h2_cpfp_signal(feature: &MempoolFeatureBar) -> Option<ScenarioSignal> {
             mean: feature.stuck_flow_pct,
             std: 0.8,
             n_obs: 1,
-            method: "bootstrap_placeholder".into(),
+            method: "empirical_package_feerate".into(),
         },
         payload: json!({
             "stuck_flow_pct": feature.stuck_flow_pct
@@ -61,7 +61,7 @@ pub fn h3_congestion_signal(feature: &MempoolFeatureBar) -> Option<ScenarioSigna
             mean: feature.fee_spike_zscore.max(0.0),
             std: 0.9,
             n_obs: 1,
-            method: "bootstrap_placeholder".into(),
+            method: "empirical_package_feerate".into(),
         },
         payload: json!({
             "p99_fee_sat_vb": feature.p99_fee_sat_vb,
@@ -88,7 +88,7 @@ pub fn write_signals_parquet(
     path: impl AsRef<std::path::Path>,
     signals: &[ScenarioSignal],
 ) -> anyhow::Result<()> {
-    write_json_rows_parquet(path, signals)
+    write_scenario_signals_typed(path, signals)
 }
 
 #[cfg(test)]

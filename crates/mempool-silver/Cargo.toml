@@ -15,8 +15,12 @@ mempool-core = { path = "../mempool-core" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
+flate2.workspace = true
 
 [dev-dependencies]
+arrow-array.workspace = true
+arrow-schema.workspace = true
+parquet = { workspace = true, features = ["arrow"] }
 scenario-engines = { path = "../scenario-engines" }
 tempfile = "3"
 

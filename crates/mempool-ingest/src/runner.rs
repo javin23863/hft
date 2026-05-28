@@ -1,6 +1,7 @@
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -13,7 +14,7 @@ use crate::metrics::IngestMetrics;
 use crate::node_gate::check_node_ready;
 use crate::rpc::BtcRpcClient;
 use crate::uploader::{spawn_uploader, AsyncUploader, UploadJob};
-use crate::zmq_subscriber::{SourceMode, ZmqSubscriber};
+use crate::zmq_subscriber::{spawn_zmq_listener, SourceMode, ZmqEvent, ZmqSubscriber};
 
 pub struct IngestRunner {
     cfg: IngestConfig,
@@ -23,6 +24,7 @@ pub struct IngestRunner {
     metrics: Arc<IngestMetrics>,
     uploader: AsyncUploader,
     zmq: ZmqSubscriber,
+    zmq_events: Option<tokio::sync::mpsc::UnboundedReceiver<ZmqEvent>>,
     source_mode: SourceMode,
 }
 
@@ -40,6 +42,7 @@ impl IngestRunner {
             Arc::clone(&metrics),
         )?;
         let zmq = ZmqSubscriber::new(cfg.zmq_rawtx.clone(), cfg.zmq_hashblock.clone());
+        let zmq_events = spawn_zmq_listener(cfg.zmq_rawtx.clone(), cfg.zmq_hashblock.clone());
         Ok(Self {
             cfg,
             rpc,
@@ -48,6 +51,7 @@ impl IngestRunner {
             metrics,
             uploader,
             zmq,
+            zmq_events,
             source_mode: SourceMode::Polling,
         })
     }
@@ -67,11 +71,17 @@ impl IngestRunner {
         }
 
         let mut last_snapshot = std::time::Instant::now();
+        let mut zmq_txids: HashSet<String> = HashSet::new();
         loop {
-            if self.zmq.try_poll_event().await.unwrap_or(false) {
-                self.metrics.zmq_cycles.fetch_add(1, Ordering::Relaxed);
+            if let Some(rx) = self.zmq_events.as_mut() {
+                while let Ok(ev) = rx.try_recv() {
+                    self.metrics.zmq_cycles.fetch_add(1, Ordering::Relaxed);
+                    if let ZmqEvent::RawTx { txid } = ev {
+                        zmq_txids.insert(txid);
+                    }
+                }
             }
-            if let Err(e) = self.poll_once().await {
+            if let Err(e) = self.poll_once(&mut zmq_txids).await {
                 self.metrics.rpc_errors.fetch_add(1, Ordering::Relaxed);
                 tracing::error!(error = %e, "poll cycle failed");
             }
@@ -84,7 +94,7 @@ impl IngestRunner {
         }
     }
 
-    pub async fn poll_once(&mut self) -> Result<()> {
+    pub async fn poll_once(&mut self, zmq_txids: &mut HashSet<String>) -> Result<()> {
         let now = Utc::now();
         let run_date = format!("{:04}-{:02}-{:02}", now.year(), now.month(), now.day());
         let hour = format!("{:02}", now.hour());
@@ -96,16 +106,25 @@ impl IngestRunner {
             .last_mempool_size
             .store(info.size, Ordering::Relaxed);
 
-        let observed_at_ns = now
-            .timestamp_nanos_opt()
-            .unwrap_or_else(|| now.timestamp() * 1_000_000_000);
-        let events = self.indexer.ingest_verbose_map(
+        let observed_at_ns = now.timestamp_nanos_opt().unwrap_or_else(|| now.timestamp() * 1_000_000_000);
+        let mut events = self.indexer.ingest_verbose_map(
             &verbose,
             observed_at_ns,
             chain.blocks,
             !chain.initial_block_download,
             &self.cfg.node_id,
         );
+
+        let mut enrich_ids: Vec<String> = zmq_txids.drain().collect();
+        enrich_ids.truncate(25);
+        let mut addresses_by_txid = HashMap::new();
+        for txid in enrich_ids {
+            if let Ok(addrs) = self.rpc.getrawtransaction_verbose(&txid).await {
+                addresses_by_txid.insert(txid, addrs);
+            }
+        }
+        self.indexer
+            .enrich_addresses(&mut events, &addresses_by_txid);
 
         if let Some(chunk_path) = self.writer.write_events(&events, &run_date, &hour)? {
             self.metrics.bronze_chunks.fetch_add(1, Ordering::Relaxed);
@@ -123,15 +142,16 @@ impl IngestRunner {
             min_fee_sat_vb,
             &self.cfg.node_id,
         );
-        let snap_path = self.writer.write_fee_snapshot_parquet(&snap, &run_date)?;
+        let snap_path = self.writer.write_fee_snapshot_parquet(&snap, &run_date, &hour)?;
         self.enqueue_upload(&snap_path);
         Ok(())
     }
 
     pub async fn run_for(&mut self, cycles: usize) -> Result<()> {
         let _ = check_node_ready(&self.rpc, self.cfg.max_tip_lag_blocks).await?;
+        let mut zmq_txids = HashSet::new();
         for _ in 0..cycles {
-            self.poll_once().await?;
+            self.poll_once(&mut zmq_txids).await?;
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         self.writer.close()?;
@@ -142,7 +162,7 @@ impl IngestRunner {
         self.source_mode
     }
 
-    fn enqueue_upload(&self, path: &PathBuf) {
+    fn enqueue_upload(&self, path: &std::path::Path) {
         if !self.cfg.enable_b2_upload {
             return;
         }
@@ -153,7 +173,7 @@ impl IngestRunner {
             .to_string_lossy()
             .to_string();
         self.uploader.enqueue(UploadJob {
-            local_path: path.clone(),
+            local_path: path.to_path_buf(),
             object_key,
         });
     }

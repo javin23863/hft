@@ -7,10 +7,15 @@ edition.workspace = true
 name = "feasibility-report"
 path = "src/main.rs"
 
+[[bin]]
+name = "feasibility-export"
+path = "src/export_main.rs"
+
 [dependencies]
 anyhow.workspace = true
 chrono.workspace = true
 mempool-core = { path = "../mempool-core" }
+mempool-silver = { path = "../mempool-silver" }
 rand.workspace = true
 rand_chacha.workspace = true
 serde.workspace = true

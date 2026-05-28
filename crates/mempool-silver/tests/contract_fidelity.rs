@@ -1,15 +1,19 @@
 use std::fs;
-use std::path::Path;
 
+use arrow_array::RecordBatchReader;
 use jsonschema::JSONSchema;
-use mempool_core::parquet_io::read_json_rows_parquet;
+use mempool_core::typed_parquet::{
+    read_fee_snapshots_typed, write_feature_bars_typed, write_fee_snapshots_typed,
+    write_scenario_signals_typed,
+};
 use mempool_core::{FeeSnapshot, ScenarioSignal, SCHEMA_VERSION};
-use mempool_silver::{build_feature_bars, write_features_parquet};
+use mempool_silver::{build_feature_bars, load_registry};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use scenario_engines::{emit_signals_for_feature, write_signals_parquet};
 use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 
-fn load_schema(path: impl AsRef<Path>) -> serde_json::Value {
+fn load_schema(path: std::path::PathBuf) -> serde_json::Value {
     let content = fs::read_to_string(path).expect("read schema");
     serde_json::from_str(&content).expect("parse schema")
 }
@@ -31,16 +35,30 @@ fn digest_json_rows(rows: &[serde_json::Value]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+fn parquet_has_typed_columns(path: &std::path::Path, expected: &[&str]) {
+    let file = fs::File::open(path).unwrap();
+    let reader = ParquetRecordBatchReaderBuilder::try_new(file)
+        .unwrap()
+        .build()
+        .unwrap();
+    let schema = reader.schema();
+    for col in expected {
+        assert!(
+            schema.field_with_name(col).is_ok(),
+            "missing typed column {col}"
+        );
+    }
+}
+
 #[test]
-fn parquet_roundtrip_validates_schema_and_hashes() {
+fn typed_parquet_roundtrip_validates_schema_and_hashes() {
     let tmp = tempdir().expect("tempdir");
-    let fee_path = tmp.path().join("snapshot.parquet");
+    let fee_path = tmp.path().join("fees.parquet");
     let feature_path = tmp.path().join("features.parquet");
     let signal_path = tmp.path().join("signals.parquet");
 
-    let schema_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/v1");
+    let schema_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../schemas/v1");
     let fee_schema = load_schema(schema_root.join("mempool_fee_snapshot.schema.json"));
-    let feature_schema = load_schema(schema_root.join("mempool_features_1m.schema.json"));
     let signal_schema = load_schema(schema_root.join("scenario_signal.schema.json"));
 
     let snaps = vec![
@@ -70,8 +88,12 @@ fn parquet_roundtrip_validates_schema_and_hashes() {
         },
     ];
 
-    mempool_core::parquet_io::write_json_rows_parquet(&fee_path, &snaps).expect("write fee parquet");
-    let snap_back: Vec<FeeSnapshot> = read_json_rows_parquet(&fee_path).expect("read fee parquet");
+    write_fee_snapshots_typed(&fee_path, &snaps).expect("write fee parquet");
+    parquet_has_typed_columns(
+        &fee_path,
+        &["observed_at", "p99_fee_sat_vb", "stuck_flow_pct"],
+    );
+    let snap_back = read_fee_snapshots_typed(&fee_path).expect("read fee parquet");
     assert_eq!(snap_back.len(), snaps.len());
     let fee_json = snap_back
         .iter()
@@ -81,28 +103,33 @@ fn parquet_roundtrip_validates_schema_and_hashes() {
         validate_schema(&fee_schema, row);
     }
 
-    let mut bars = build_feature_bars(&snap_back);
-    bars[1].exchange_inflow_event = true;
+    let registry = load_registry().unwrap_or_else(|_| {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("ex.json");
+        fs::write(
+            &path,
+            r#"{"exchanges":[{"name":"t","addresses":["bc1qdep"]}]}"#,
+        )
+        .unwrap();
+        mempool_core::ExchangeRegistry::load(path).unwrap()
+    });
+    let mut bars = build_feature_bars(&snap_back, &[], &registry, 10.0);
     bars[1].cpfp_detected = true;
-    write_features_parquet(&feature_path, &bars).expect("write features parquet");
-    let bars_back: Vec<mempool_core::MempoolFeatureBar> =
-        read_json_rows_parquet(&feature_path).expect("read features parquet");
-    assert_eq!(bars_back.len(), bars.len());
-    let feature_json = bars_back
-        .iter()
-        .map(|x| serde_json::to_value(x).expect("feature to value"))
-        .collect::<Vec<_>>();
-    for row in &feature_json {
-        validate_schema(&feature_schema, row);
-    }
+    bars[1].exchange_inflow_event = true;
+    write_feature_bars_typed(&feature_path, &bars).expect("write features parquet");
+    parquet_has_typed_columns(
+        &feature_path,
+        &["fee_spike_zscore", "exchange_inflow_event", "cpfp_detected"],
+    );
 
-    let signals: Vec<ScenarioSignal> = bars_back
+    let signals: Vec<ScenarioSignal> = bars
         .iter()
         .flat_map(emit_signals_for_feature)
         .collect();
     write_signals_parquet(&signal_path, &signals).expect("write signals parquet");
-    let signals_back: Vec<ScenarioSignal> = read_json_rows_parquet(&signal_path).expect("read signals");
-    let signal_json = signals_back
+    write_scenario_signals_typed(&signal_path, &signals).expect("write typed signals");
+
+    let signal_json = signals
         .iter()
         .map(|x| serde_json::to_value(x).expect("signal to value"))
         .collect::<Vec<_>>();

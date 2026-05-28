@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use mempool_core::lake::bronze_tx_event_key;
-use mempool_core::parquet_io::{read_json_rows_parquet, write_json_rows_parquet};
+use mempool_core::typed_parquet::write_fee_snapshots_typed;
 use mempool_core::types::{FeeSnapshot, MempoolTxEvent};
 use serde_json;
 
@@ -79,17 +79,17 @@ impl BronzeWriter {
         &self,
         snap: &FeeSnapshot,
         run_date: &str,
+        hour: &str,
     ) -> Result<PathBuf> {
+        let ts_ms = chrono::Utc::now().timestamp_millis();
         let path = self.spool_dir.join(format!(
-            "hft/bronze/source=bitcoin/dataset=mempool_fee_snapshot/run={run_date}/snapshot.parquet"
+            "hft/bronze/source=bitcoin/dataset=mempool_fee_snapshot/run={run_date}/hour={hour}/part-{ts_ms}.parquet"
         ));
-        let mut snaps: Vec<FeeSnapshot> = if path.exists() {
-            read_json_rows_parquet(&path).context("read existing fee snapshots parquet")?
-        } else {
-            Vec::new()
-        };
-        snaps.push(snap.clone());
-        write_json_rows_parquet(&path, &snaps).context("write fee snapshots parquet")?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).ok();
+        }
+        write_fee_snapshots_typed(&path, std::slice::from_ref(snap))
+            .context("write typed fee snapshot parquet")?;
         Ok(path)
     }
 

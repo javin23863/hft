@@ -5,6 +5,8 @@ This index links all gate artifacts required by the A-grade remediation checklis
 ## Repro Commands
 
 - `cargo test --workspace`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo run -p feasibility --bin feasibility-export`
 - `cargo run -p feasibility --bin feasibility-report`
 - `cargo run -p mempool-silver --bin mempool-silver-build`
 

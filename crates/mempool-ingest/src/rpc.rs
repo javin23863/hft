@@ -32,12 +32,22 @@ pub struct MempoolInfo {
     pub mempool_min_fee: f64,
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct MempoolFees {
+    #[serde(default)]
+    pub ancestor: f64,
+    #[serde(default)]
+    pub descendant: f64,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerboseMempoolEntry {
     pub fee: f64,
     pub vsize: u32,
     pub time: u64,
+    #[serde(default)]
+    pub fees: Option<MempoolFees>,
     #[serde(default)]
     pub descendantcount: u32,
     #[serde(default)]
@@ -94,7 +104,9 @@ impl BtcRpcClient {
                 anyhow::bail!("rpc error: {err}");
             }
         }
-        v.get("result").cloned().context("rpc missing result")
+        v.get("result")
+            .cloned()
+            .context("rpc missing result")
     }
 
     pub async fn getblockchaininfo(&self) -> Result<ChainInfo> {
@@ -107,9 +119,7 @@ impl BtcRpcClient {
         serde_json::from_value(r).context("parse mempool info")
     }
 
-    pub async fn getrawmempool_verbose(
-        &self,
-    ) -> Result<std::collections::HashMap<String, VerboseMempoolEntry>> {
+    pub async fn getrawmempool_verbose(&self) -> Result<std::collections::HashMap<String, VerboseMempoolEntry>> {
         let r = self.call("getrawmempool", json!([true])).await?;
         serde_json::from_value(r).context("parse verbose mempool")
     }
@@ -126,12 +136,42 @@ impl BtcRpcClient {
         } else {
             0.0
         };
+        let (ancestor_feerate_sat_vb, descendant_feerate_sat_vb) = if let Some(fees) = &entry.fees {
+            let anc_vb = entry.ancestorsize.max(1) as f64;
+            let desc_vb = entry.descendantssize.max(1) as f64;
+            (
+                Some((fees.ancestor * 100_000_000.0) / anc_vb),
+                Some((fees.descendant * 100_000_000.0) / desc_vb),
+            )
+        } else {
+            (Some(fee_rate), None)
+        };
         MempoolEntryMeta {
             ancestor_count: entry.ancestorcount,
             descendant_count: entry.descendantcount,
-            ancestor_feerate_sat_vb: Some(fee_rate),
-            descendant_feerate_sat_vb: None,
+            ancestor_feerate_sat_vb,
+            descendant_feerate_sat_vb,
         }
+    }
+
+    pub async fn getrawtransaction_verbose(&self, txid: &str) -> Result<Vec<Option<String>>> {
+        let r = self
+            .call("getrawtransaction", json!([txid, true]))
+            .await?;
+        let vout = r
+            .get("vout")
+            .and_then(|v| v.as_array())
+            .context("missing vout")?;
+        let mut addresses = Vec::new();
+        for o in vout {
+            let addr = o
+                .get("scriptPubKey")
+                .and_then(|s| s.get("address"))
+                .and_then(|a| a.as_str())
+                .map(|s| s.to_string());
+            addresses.push(addr);
+        }
+        Ok(addresses)
     }
 
     pub fn fee_rate_sat_vb(entry: &VerboseMempoolEntry) -> f64 {

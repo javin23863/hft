@@ -1,10 +1,11 @@
 # Gate 1 Runtime Stability
 
-- Scope: Ingest polling stability, ZMQ mode probe, and async uploader non-blocking behavior.
+- Scope: Ingest polling stability, ZMQ SUB listener, partitioned bronze writes, and async B2 uploader.
 - Validation command: `cargo test -p mempool-ingest`
-- Pass condition: no panics, uploader metrics counters exposed, ZMQ probe test passes.
+- Pass condition (automated): ingest unit tests pass without panics; metrics counters exposed.
+- Pass condition (operational): **24h continuous ingest** with stable poll latency, no spool growth runaway, and upload retry rate within SLO.
 
 ## Result
 
-- Status: PASS (local test run required in target environment)
-- Notes: uploader queue depth and retry counters are now in `IngestMetrics`.
+- Status: **PARTIAL** — automated tests PASS; 24h soak **PENDING** (not measured in CI).
+- Notes: ZMQ uses `zmq` crate SUB thread; B2 upload uses `aws-sdk-s3` `put_object` with retries.
