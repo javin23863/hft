@@ -2,6 +2,7 @@
 **/*.rs.bk
 .env
 runtime/
+logs/
 *.swp
 *.swo
 .DS_Store

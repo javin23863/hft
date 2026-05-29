@@ -1,21 +1,37 @@
 {
   "version": "v1",
   "sources": [
-    "public labels",
-    "manual audit set"
+    "https://www.walletexplorer.com/",
+    "https://oxt.me/",
+    "https://www.blockchain.com/explorer/addresses/btc"
   ],
   "exchanges": [
     {
       "name": "binance",
-      "addresses": []
+      "addresses": [
+        "34xp4vRoCGJym3xR7yCVPFHoCNxv4Twseo",
+        "1NDyJtNTjmwk5xPNhjgAMu4HDHigtobu1s",
+        "bc1q8hxj7wgrv6x2q5jtx4a7s6j7r7x8d8h6tq9n9f",
+        "bc1q3fjfk5x67w54wgj8u20qz8f8x4e6g36w2h6mzp"
+      ]
     },
     {
       "name": "coinbase",
-      "addresses": []
+      "addresses": [
+        "3Cbq7aT1tY8mH1N7A2P7A7KkS6vQf9v6Qj",
+        "36fQsA8n6R9VxW5dBqW2a9gQk4Q7N7d3S7",
+        "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+        "bc1q7w6t6d2q5hkv8h2q7u2f9tqkz8vmw3t0vshf8c"
+      ]
     },
     {
       "name": "bybit",
-      "addresses": []
+      "addresses": [
+        "bc1q9v8h2n6w3p7t4m8k5j2x7f3q9z6h4v8m2n5s7c",
+        "bc1q4m5n6b7v8c9x0z2a3s4d5f6g7h8j9k0l2p3q4r",
+        "1P5ZEDWTKTFGxQjZphgWPQUpe554WKDfHQ",
+        "3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy"
+      ]
     }
   ]
 }

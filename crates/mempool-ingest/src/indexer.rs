@@ -136,7 +136,7 @@ mod tests {
 
     fn entry(fee_btc: f64, vsize: u32) -> VerboseMempoolEntry {
         VerboseMempoolEntry {
-            fee: fee_btc,
+            fee: Some(fee_btc),
             vsize,
             time: 0,
             fees: None,

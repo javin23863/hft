@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use anyhow::{Context, Result};
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use serde_json::{json, Value};
 
 use mempool_core::config::IngestConfig;
@@ -35,6 +35,12 @@ pub struct MempoolInfo {
 #[derive(Debug, Deserialize, Default)]
 pub struct MempoolFees {
     #[serde(default)]
+    pub base: f64,
+    #[serde(default)]
+    pub effective: f64,
+    #[serde(default)]
+    pub modified: f64,
+    #[serde(default)]
     pub ancestor: f64,
     #[serde(default)]
     pub descendant: f64,
@@ -43,7 +49,8 @@ pub struct MempoolFees {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerboseMempoolEntry {
-    pub fee: f64,
+    #[serde(default, deserialize_with = "deserialize_optional_fee_btc")]
+    pub fee: Option<f64>,
     pub vsize: u32,
     pub time: u64,
     #[serde(default)]
@@ -58,6 +65,31 @@ pub struct VerboseMempoolEntry {
     pub descendantssize: u32,
     #[serde(rename = "bip125-replaceable")]
     pub bip125_replaceable: Option<bool>,
+}
+
+fn deserialize_optional_fee_btc<'de, D>(deserializer: D) -> std::result::Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Null => Ok(None),
+        Value::Number(n) => n
+            .as_f64()
+            .map(Some)
+            .ok_or_else(|| serde::de::Error::custom("fee number is not f64")),
+        Value::Object(map) => {
+            let candidate = ["base", "effective", "modified", "ancestor", "descendant"]
+                .iter()
+                .find_map(|k| map.get(*k))
+                .ok_or_else(|| serde::de::Error::custom("fee object missing known keys"))?;
+            candidate
+                .as_f64()
+                .map(Some)
+                .ok_or_else(|| serde::de::Error::custom("fee object value is not f64"))
+        }
+        _ => Err(serde::de::Error::custom("unexpected fee format")),
+    }
 }
 
 impl BtcRpcClient {
@@ -130,7 +162,8 @@ impl BtcRpcClient {
     }
 
     pub fn entry_meta(entry: &VerboseMempoolEntry, vsize: u32) -> MempoolEntryMeta {
-        let fee_sat = (entry.fee * 100_000_000.0).round() as u64;
+        let fee_btc = Self::entry_fee_btc(entry);
+        let fee_sat = (fee_btc * 100_000_000.0).round() as u64;
         let fee_rate = if vsize > 0 {
             fee_sat as f64 / vsize as f64
         } else {
@@ -175,7 +208,7 @@ impl BtcRpcClient {
     }
 
     pub fn fee_rate_sat_vb(entry: &VerboseMempoolEntry) -> f64 {
-        let fee_sat = (entry.fee * 100_000_000.0).round() as u64;
+        let fee_sat = (Self::entry_fee_btc(entry) * 100_000_000.0).round() as u64;
         if entry.vsize > 0 {
             fee_sat as f64 / entry.vsize as f64
         } else {
@@ -185,6 +218,24 @@ impl BtcRpcClient {
 
     pub fn rbf_signaling(entry: &VerboseMempoolEntry) -> bool {
         entry.bip125_replaceable.unwrap_or(false)
+    }
+
+    fn entry_fee_btc(entry: &VerboseMempoolEntry) -> f64 {
+        if let Some(fee) = entry.fee {
+            fee
+        } else if let Some(fees) = &entry.fees {
+            if fees.base > 0.0 {
+                fees.base
+            } else if fees.effective > 0.0 {
+                fees.effective
+            } else if fees.modified > 0.0 {
+                fees.modified
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
     }
 }
 
